@@ -2,7 +2,7 @@ import apiKey
 import requests
 import time
 
-radarr_url = "http://media.server:7878/api/v3/movie"
+radarr_url = "http://RADARR_URL:RADARR_PORT/api/v3/movie"
 headers = {"X-Api-Key": apiKey.radarr_key}
 
 response = requests.get(radarr_url, headers=headers)
