@@ -1,5 +1,5 @@
 # aither-exists-check
-Lightweight script that checks your Radarr+sonarr media libraries against Aither's uploaded movie torrents
+Lightweight script that checks your Radarr+Sonarr media libraries against Aither's uploaded movie torrents
 
 ## Setup / Run
 1. Firstly, install Python if not already on your system (in cmd, `python -V`). Version shouldn't strictly matter, unless it is way back at version 2.x.x (latest is 3.11)
@@ -8,3 +8,5 @@ Lightweight script that checks your Radarr+sonarr media libraries against Aither
 4. Run with `python main.py` for Radarr or `python mainsonarr.py` for Sonarr.
 
 **Notice: running on Linux may need you to use `python3` rather than just `python`**
+
+P.S: The .txt will update after completing your *whole* library. Until then watch the terminal feed :)
