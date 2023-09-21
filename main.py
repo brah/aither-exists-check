@@ -46,13 +46,17 @@ def main():
     movies = get_all_movies()
 
     # Open a file for writing "Not found" messages
-    not_found_file = open(NOT_FOUND_FILE, "w")
+    not_found_file = open(NOT_FOUND_FILE, "w", encoding="utf-8")
 
     # Loop through each movie and search for it in Aither using its TMDB ID
     for movie in movies:
         title = movie["title"]
         tmdb_id = movie["tmdbId"]
-        movie_resolution = movie["movieFile"]["quality"]["quality"]["resolution"]
+        try:
+            movie_resolution = movie["movieFile"]["quality"]["quality"]["resolution"]
+        except Exception as err:
+            print(f"Error: {str(err)}")
+            movie_resolution = None
         aither_resolution = RESOLUTION_MAP.get(str(movie_resolution))
         print(f"Checking {title}... ", end="")
         try:
@@ -67,7 +71,7 @@ def main():
                 )
                 # Write the "Not found" message to the file
                 not_found_file.write(
-                    f"Not found in local copy resolution of {movie_resolution} on AITHER\n"
+                    f"{title} Not found in local copy resolution of {movie_resolution} on AITHER\n"
                 )
             else:
                 print(f"Found in local copy resolution of {movie_resolution} on AITHER")
