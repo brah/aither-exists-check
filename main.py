@@ -5,7 +5,6 @@ import argparse
 import os
 import logging
 
-
 # Just to sameline the logs while logging to file also
 class NoNewlineStreamHandler(logging.StreamHandler):
     def emit(self, record):
@@ -27,7 +26,8 @@ RADARR_API_SUFFIX = "/api/v3/movie"
 SONARR_API_SUFFIX = "/api/v3/series"
 NOT_FOUND_FILE_RADARR = "not_found_radarr.txt"
 NOT_FOUND_FILE_SONARR = "not_found_sonarr.txt"
-SLEEP_TIME = 3
+INITIAL_SLEEP_TIME = 3
+MAX_SLEEP_TIME = 60
 
 # LOGIC CONSTANT - DO NOT TWEAK !!!
 RESOLUTION_MAP = {
@@ -125,26 +125,40 @@ def get_all_shows(session):
 
 
 # Function to search for a movie in Aither using its TMDB ID + resolution if found
-def search_movie(session, tmdb_id, resolution=None):
+def search_movie(session, tmdb_id, resolution=None, sleep_time=INITIAL_SLEEP_TIME):
     if resolution is not None:
         url = f"{AITHER_URL}/api/torrents/filter?tmdbId={tmdb_id}&resolutions[0]={resolution}&api_token={apiKey.aither_key}"
     else:
         url = f"{AITHER_URL}/api/torrents/filter?tmdbId={tmdb_id}&api_token={apiKey.aither_key}"
-    response = session.get(url)
-    response.raise_for_status()  # Raise an exception if the request failed
-    torrents = response.json()["data"]
-    time.sleep(SLEEP_TIME)  # Respectful delay
-    return torrents
+    
+    while True:
+        response = session.get(url)
+        if response.status_code == 429:
+            logger.warning(f"Rate limit exceeded. Sleeping for {sleep_time} seconds.")
+            time.sleep(sleep_time)
+            sleep_time = min(sleep_time * 2, MAX_SLEEP_TIME)
+        else:
+            response.raise_for_status()  # Raise an exception if the request failed
+            torrents = response.json()["data"]
+            time.sleep(INITIAL_SLEEP_TIME)  # Respectful delay
+            return torrents
 
 
 # Function to search for a show in Aither using its TVDB ID
-def search_show(session, tvdb_id):
+def search_show(session, tvdb_id, sleep_time=INITIAL_SLEEP_TIME):
     url = f"{AITHER_URL}/api/torrents/filter?tvdbId={tvdb_id}&api_token={apiKey.aither_key}"
-    response = session.get(url)
-    response.raise_for_status()  # Raise an exception if the request failed
-    torrents = response.json()["data"]
-    time.sleep(SLEEP_TIME)  # Respectful delay
-    return torrents
+    
+    while True:
+        response = session.get(url)
+        if response.status_code == 429:
+            logger.warning(f"Rate limit exceeded. Sleeping for {sleep_time} seconds.")
+            time.sleep(sleep_time)
+            sleep_time = min(sleep_time * 2, MAX_SLEEP_TIME)
+        else:
+            response.raise_for_status()  # Raise an exception if the request failed
+            torrents = response.json()["data"]
+            time.sleep(INITIAL_SLEEP_TIME)  # Respectful delay
+            return torrents
 
 
 # Function to process each movie
@@ -160,8 +174,11 @@ def process_movie(session, movie, not_found_file):
     try:
         torrents = search_movie(session, tmdb_id, aither_resolution)
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        not_found_file.write(f"{title} - Error: {str(e)}\n")
+        if "429" in str(e):
+            logger.warning(f"Rate limit exceeded while checking {title}. Will retry.")
+        else:
+            logger.error(f"Error: {str(e)}")
+            not_found_file.write(f"{title} - Error: {str(e)}\n")
     else:
         if len(torrents) == 0:
             try:
@@ -193,8 +210,11 @@ def process_show(session, show, not_found_file):
     try:
         torrents = search_show(session, tvdb_id)
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        not_found_file.write(f"{title} - Error: {str(e)}\n")
+        if "429" in str(e):
+            logger.warning(f"Rate limit exceeded while checking {title}. Will retry.")
+        else:
+            logger.error(f"Error: {str(e)}")
+            not_found_file.write(f"{title} - Error: {str(e)}\n")
     else:
         if len(torrents) == 0:
             logger.info("Not found in Aither")
