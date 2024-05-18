@@ -27,7 +27,7 @@ RADARR_API_SUFFIX = "/api/v3/movie"
 SONARR_API_SUFFIX = "/api/v3/series"
 NOT_FOUND_FILE_RADARR = "not_found_radarr.txt"
 NOT_FOUND_FILE_SONARR = "not_found_sonarr.txt"
-SLEEP_TIME = 2
+SLEEP_TIME = 3
 
 # LOGIC CONSTANT - DO NOT TWEAK !!!
 RESOLUTION_MAP = {
