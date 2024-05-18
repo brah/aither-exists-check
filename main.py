@@ -1,12 +1,33 @@
 import apiKey
 import requests
 import time
+import argparse
+import os
+import logging
+
+
+# Just to sameline the logs while logging to file also
+class NoNewlineStreamHandler(logging.StreamHandler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            if record.levelno == logging.INFO and msg.endswith("... "):
+                stream.write(msg)
+            else:
+                stream.write(msg + "\n")
+            self.flush()
+        except Exception:
+            self.handleError(record)
+
 
 # Configurable constants
-RADARR_URL = "http://RADARR_URL:RADARR_PORT/api/v3/movie"
 AITHER_URL = "https://aither.cc"
-NOT_FOUND_FILE = "not_found.txt"
-SLEEP_TIME = 0.5
+RADARR_API_SUFFIX = "/api/v3/movie"
+SONARR_API_SUFFIX = "/api/v3/series"
+NOT_FOUND_FILE_RADARR = "not_found_radarr.txt"
+NOT_FOUND_FILE_SONARR = "not_found_sonarr.txt"
+SLEEP_TIME = 2
 
 # LOGIC CONSTANT - DO NOT TWEAK !!!
 RESOLUTION_MAP = {
@@ -21,64 +42,215 @@ RESOLUTION_MAP = {
     "480p": 9,
 }
 
+# Setup logging
+logger = logging.getLogger("customLogger")
+logger.setLevel(logging.INFO)
+
+# Console handler with a simpler format
+console_handler = NoNewlineStreamHandler()
+console_formatter = logging.Formatter("%(message)s")
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+# File handler with detailed format
+file_handler = logging.FileHandler("script.log")
+file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+
+# Setup function to prompt user for missing API keys and URLs if critical for the selected mode(s)
+def setup(radarr_needed, sonarr_needed):
+    missing = []
+
+    if not apiKey.aither_key:
+        missing.append("Aither API key")
+        apiKey.aither_key = input("Enter your Aither API key: ")
+
+    if radarr_needed:
+        if not apiKey.radarr_key:
+            missing.append("Radarr API key")
+            apiKey.radarr_key = input("Enter your Radarr API key: ")
+        if not apiKey.radarr_url:
+            missing.append("Radarr URL")
+            apiKey.radarr_url = input(
+                "Enter your Radarr URL (e.g., http://RADARR_URL:RADARR_PORT): "
+            )
+
+    if sonarr_needed:
+        if not apiKey.sonarr_key:
+            missing.append("Sonarr API key")
+            apiKey.sonarr_key = input("Enter your Sonarr API key: ")
+        if not apiKey.sonarr_url:
+            missing.append("Sonarr URL")
+            apiKey.sonarr_url = input(
+                "Enter your Sonarr URL (e.g., http://SONARR_URL:SONARR_PORT): "
+            )
+
+    if missing:
+        with open("apiKey.py", "w") as f:
+            f.write(f'aither_key = "{apiKey.aither_key}"\n')
+            f.write(f'radarr_key = "{apiKey.radarr_key}"\n')
+            f.write(f'sonarr_key = "{apiKey.sonarr_key}"\n')
+            f.write(f'radarr_url = "{apiKey.radarr_url}"\n')
+            f.write(f'sonarr_url = "{apiKey.sonarr_url}"\n')
+
+    # Alert the user about missing non-critical variables
+    if not radarr_needed and (not apiKey.radarr_key or not apiKey.radarr_url):
+        logger.warning(
+            "Radarr API key or URL is missing. Radarr functionality will be limited."
+        )
+    if not sonarr_needed and (not apiKey.sonarr_key or not apiKey.sonarr_url):
+        logger.warning(
+            "Sonarr API key or URL is missing. Sonarr functionality will be limited."
+        )
+
+
 # Function to get all movies from Radarr
-def get_all_movies():
-    response = requests.get(RADARR_URL, headers={"X-Api-Key": apiKey.radarr_key})
+def get_all_movies(session):
+    radarr_url = apiKey.radarr_url + RADARR_API_SUFFIX
+    response = session.get(radarr_url, headers={"X-Api-Key": apiKey.radarr_key})
+    response.raise_for_status()  # Ensure we handle request errors properly
     movies = response.json()
     return movies
 
 
+# Function to get all shows from Sonarr
+def get_all_shows(session):
+    sonarr_url = apiKey.sonarr_url + SONARR_API_SUFFIX
+    response = session.get(sonarr_url, headers={"X-Api-Key": apiKey.sonarr_key})
+    response.raise_for_status()  # Ensure we handle request errors properly
+    shows = response.json()
+    return shows
+
+
 # Function to search for a movie in Aither using its TMDB ID + resolution if found
-def search_movie(tmdb_id, resolution=None):
+def search_movie(session, tmdb_id, resolution=None):
     if resolution is not None:
         url = f"{AITHER_URL}/api/torrents/filter?tmdbId={tmdb_id}&resolutions[0]={resolution}&api_token={apiKey.aither_key}"
     else:
         url = f"{AITHER_URL}/api/torrents/filter?tmdbId={tmdb_id}&api_token={apiKey.aither_key}"
-    response = requests.get(url)
+    response = session.get(url)
     response.raise_for_status()  # Raise an exception if the request failed
     torrents = response.json()["data"]
+    time.sleep(SLEEP_TIME)  # Respectful delay
     return torrents
 
 
-# Main function to loop through movies and search for them in Aither
-def main():
-    # Get all movies from Radarr
-    movies = get_all_movies()
+# Function to search for a show in Aither using its TVDB ID
+def search_show(session, tvdb_id):
+    url = f"{AITHER_URL}/api/torrents/filter?tvdbId={tvdb_id}&api_token={apiKey.aither_key}"
+    response = session.get(url)
+    response.raise_for_status()  # Raise an exception if the request failed
+    torrents = response.json()["data"]
+    time.sleep(SLEEP_TIME)  # Respectful delay
+    return torrents
 
-    # Open a file for writing "Not found" messages
-    not_found_file = open(NOT_FOUND_FILE, "w", encoding="utf-8")
 
-    # Loop through each movie and search for it in Aither using its TMDB ID
-    for movie in movies:
-        title = movie["title"]
-        tmdb_id = movie["tmdbId"]
-        try:
-            movie_resolution = movie["movieFile"]["quality"]["quality"]["resolution"]
-        except Exception as err:
-            print(f"Error: {str(err)}")
-            movie_resolution = None
-        aither_resolution = RESOLUTION_MAP.get(str(movie_resolution))
-        print(f"Checking {title}... ", end="")
-        try:
-            torrents = search_movie(tmdb_id, aither_resolution)
-        except Exception as e:
-            print(f"Error: {str(e)}")
-            not_found_file.write(f"{title} - Error: {str(e)}\n")
+# Function to process each movie
+def process_movie(session, movie, not_found_file):
+    title = movie["title"]
+    tmdb_id = movie["tmdbId"]
+    try:
+        movie_resolution = movie["movieFile"]["quality"]["quality"]["resolution"]
+    except KeyError:
+        movie_resolution = None
+    aither_resolution = RESOLUTION_MAP.get(str(movie_resolution))
+    logger.info(f"Checking {title}... ")
+    try:
+        torrents = search_movie(session, tmdb_id, aither_resolution)
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        not_found_file.write(f"{title} - Error: {str(e)}\n")
+    else:
+        if len(torrents) == 0:
+            try:
+                movie_file = movie["movieFile"]["path"]
+                if movie_file:
+                    logger.info(
+                        f"Not found in local copy resolution of {movie_resolution} on AITHER"
+                    )
+                    not_found_file.write(f"{movie_file}\n")
+                else:
+                    logger.info(
+                        f"Not found in local copy resolution of {movie_resolution} on AITHER (No media file)"
+                    )
+            except KeyError:
+                logger.info(
+                    f"Not found in local copy resolution of {movie_resolution} on AITHER (No media file)"
+                )
         else:
-            if len(torrents) == 0:
-                print(
-                    f"Not found in local copy resolution of {movie_resolution} on AITHER"
-                )
-                # Write the "Not found" message to the file
-                not_found_file.write(
-                    f"{title} Not found in local copy resolution of {movie_resolution} on AITHER\n"
-                )
-            else:
-                print(f"Found in local copy resolution of {movie_resolution} on AITHER")
-                time.sleep(SLEEP_TIME)
+            logger.info(
+                f"Found in local copy resolution of {movie_resolution} on AITHER"
+            )
 
-    # Close the file
-    not_found_file.close()
+
+# Function to process each show
+def process_show(session, show, not_found_file):
+    title = show["title"]
+    tvdb_id = show["tvdbId"]
+    logger.info(f"Checking {title}... ")
+    try:
+        torrents = search_show(session, tvdb_id)
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        not_found_file.write(f"{title} - Error: {str(e)}\n")
+    else:
+        if len(torrents) == 0:
+            logger.info("Not found in Aither")
+            not_found_file.write(f"{title} not found in AITHER\n")
+        else:
+            logger.info("Found in AITHER")
+
+
+# Main function to handle both Radarr and Sonarr
+def main():
+    parser = argparse.ArgumentParser(
+        description="Check Radarr or Sonarr library against Aither"
+    )
+    parser.add_argument("--radarr", action="store_true", help="Check Radarr library")
+    parser.add_argument("--sonarr", action="store_true", help="Check Sonarr library")
+
+    args = parser.parse_args()
+
+    radarr_needed = args.radarr or (not args.sonarr and not args.radarr)
+    sonarr_needed = args.sonarr or (not args.sonarr and not args.radarr)
+    setup(
+        radarr_needed=radarr_needed, sonarr_needed=sonarr_needed
+    )  # Ensure API keys and URLs are set
+
+    if not args.radarr and not args.sonarr:
+        logger.info("No arguments specified. Running both Radarr and Sonarr checks.\n")
+
+    try:
+        with requests.Session() as session:
+            if args.radarr or (not args.sonarr and not args.radarr):
+                if apiKey.radarr_key and apiKey.radarr_url:
+                    movies = get_all_movies(session)
+                    with open(
+                        NOT_FOUND_FILE_RADARR, "w", encoding="utf-8", buffering=1
+                    ) as not_found_file:
+                        for movie in movies:
+                            process_movie(session, movie, not_found_file)
+                else:
+                    logger.warning(
+                        "Skipping Radarr check: Radarr API key or URL is missing.\n"
+                    )
+
+            if args.sonarr or (not args.sonarr and not args.radarr):
+                if apiKey.sonarr_key and apiKey.sonarr_url:
+                    shows = get_all_shows(session)
+                    with open(
+                        NOT_FOUND_FILE_SONARR, "w", encoding="utf-8", buffering=1
+                    ) as not_found_file:
+                        for show in shows:
+                            process_show(session, show, not_found_file)
+                else:
+                    logger.warning(
+                        "Skipping Sonarr check: Sonarr API key or URL is missing.\n"
+                    )
+    except KeyboardInterrupt:
+        logger.info("\nProcess interrupted by user. Exiting.\n")
 
 
 if __name__ == "__main__":
