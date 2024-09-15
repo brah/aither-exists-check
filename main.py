@@ -30,6 +30,7 @@ INITIAL_SLEEP_TIME = 3
 MAX_SLEEP_TIME = 60
 
 # LOGIC CONSTANT - DO NOT TWEAK !!!
+# changing this may break resolution mapping for dvd in search_movie
 RESOLUTION_MAP = {
     "4320": 1,
     "2160": 2,
@@ -167,10 +168,24 @@ def process_movie(session, movie, not_found_file):
     tmdb_id = movie["tmdbId"]
     try:
         movie_resolution = movie["movieFile"]["quality"]["quality"]["resolution"]
+        # if no resolution like with dvd quality. try parse from mediainfo instead
+        if not movie_resolution:
+            mediainfo_resolution = movie["movieFile"]["mediaInfo"]["resolution"]
+            width, height = mediainfo_resolution.split("x")
+            movie_resolution = height
+
     except KeyError:
         movie_resolution = None
     aither_resolution = RESOLUTION_MAP.get(str(movie_resolution))
-    logger.info(f"Checking {title}... ")
+    logger.info(f"Checking {title}[{movie_resolution}]... ")
+
+    # verify radarr actually has a file entry if not skip check and save api call
+    if not "movieFile" in movie:
+        logger.info(
+            f"Skipped. No file found in radarr for {title}"
+        )
+        return
+
     try:
         torrents = search_movie(session, tmdb_id, aither_resolution)
     except Exception as e:
