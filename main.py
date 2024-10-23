@@ -2,7 +2,7 @@ import apiKey
 import requests
 import time
 import argparse
-import os
+from guessit import guessit
 import logging
 
 # Just to sameline the logs while logging to file also
@@ -26,7 +26,7 @@ RADARR_API_SUFFIX = "/api/v3/movie"
 SONARR_API_SUFFIX = "/api/v3/series"
 NOT_FOUND_FILE_RADARR = "not_found_radarr.txt"
 NOT_FOUND_FILE_SONARR = "not_found_sonarr.txt"
-INITIAL_SLEEP_TIME = 3
+INITIAL_SLEEP_TIME = 10
 MAX_SLEEP_TIME = 60
 
 # LOGIC CONSTANT - DO NOT TWEAK !!!
@@ -42,6 +42,26 @@ RESOLUTION_MAP = {
     "480": 8,
     "480p": 9,
 }
+
+CATEGORY_MAP = {
+    "movie": 1,
+    "tv": 2
+}
+
+TYPE_MAP = {
+    "FULL DISC": 1,
+    "REMUX": 2,
+    "ENCODE": 3,
+    "WEB-DL": 4,
+    "WEBRIP": 5,
+    "HDTV": 6,
+    "OTHER": 7,
+    "MOVIE PACK": 10,
+}
+
+BANNED_GROUPS = ['4K4U', 'AROMA', 'd3g', 'edge2020', 'EMBER', 'EVO', 'FGT', 'FreetheFish', 'Hi10', 'HiQVE', 'ION10', 'iVy', 'Judas', 'LAMA', 'MeGusta', 'nikt0', 'OEPlus', 'OFT', 'OsC', 'PYC',
+                              'QxR', 'Ralphy', 'RARBG', 'RetroPeeps', 'SAMPA', 'Sicario', 'Silence', 'SkipTT', 'SPDVD', 'STUTTERSHIT', 'SWTYBLZ', 'TAoE', 'TGx', 'Tigole', 'TSP', 'TSPxL', 'VXT', 'Weasley[HONE]',
+                              'Will1869', 'x0r', 'YIFY']
 
 # Setup logging
 logger = logging.getLogger("customLogger")
@@ -126,11 +146,17 @@ def get_all_shows(session):
 
 
 # Function to search for a movie in Aither using its TMDB ID + resolution if found
-def search_movie(session, tmdb_id, resolution=None, sleep_time=INITIAL_SLEEP_TIME):
-    if resolution is not None:
-        url = f"{AITHER_URL}/api/torrents/filter?tmdbId={tmdb_id}&resolutions[0]={resolution}&api_token={apiKey.aither_key}"
+def search_movie(session, movie, movie_resolution, movie_type):
+    tmdb_id = movie["tmdbId"]
+
+    # build the search url
+    if movie_resolution is not None:
+        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP["movie"]}&tmdbId={tmdb_id}&resolutions[0]={movie_resolution}&api_token={apiKey.aither_key}"
     else:
-        url = f"{AITHER_URL}/api/torrents/filter?tmdbId={tmdb_id}&api_token={apiKey.aither_key}"
+        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP["movie"]}&tmdbId={tmdb_id}&api_token={apiKey.aither_key}"
+
+    if movie_type:
+        url += f"&types[0]={movie_type}"
     
     while True:
         response = session.get(url)
@@ -161,33 +187,45 @@ def search_show(session, tvdb_id, sleep_time=INITIAL_SLEEP_TIME):
             time.sleep(INITIAL_SLEEP_TIME)  # Respectful delay
             return torrents
 
+def get_movie_resolution(movie):
+    # get resolution from radarr if missing try pull from media info
+    try:
+        movie_resolution = movie.get("movieFile").get("quality").get("quality").get("resolution")
+        # if no resolution like with dvd quality. try parse from mediainfo instead
+        if not movie_resolution:
+            mediainfo_resolution = movie.get("movieFile").get("mediaInfo").get("resolution")
+            width, height = mediainfo_resolution.split("x")
+            movie_resolution = height
+    except KeyError:
+        movie_resolution = None
+    return movie_resolution
 
 # Function to process each movie
 def process_movie(session, movie, not_found_file):
     title = movie["title"]
-    tmdb_id = movie["tmdbId"]
-    try:
-        movie_resolution = movie["movieFile"]["quality"]["quality"]["resolution"]
-        # if no resolution like with dvd quality. try parse from mediainfo instead
-        if not movie_resolution:
-            mediainfo_resolution = movie["movieFile"]["mediaInfo"]["resolution"]
-            width, height = mediainfo_resolution.split("x")
-            movie_resolution = height
-
-    except KeyError:
-        movie_resolution = None
-    aither_resolution = RESOLUTION_MAP.get(str(movie_resolution))
-    logger.info(f"Checking {title}[{movie_resolution}]... ")
+    logger.info(f"Checking {title}... ")
 
     # verify radarr actually has a file entry if not skip check and save api call
     if not "movieFile" in movie:
         logger.info(
-            f"Skipped. No file found in radarr for {title}"
+            f"[Skipped: local]. No file found in radarr for {title}"
+        )
+        return
+
+    # skip check if group is banned.
+    if "releaseGroup" in movie["movieFile"] and \
+            movie["movieFile"]["releaseGroup"].casefold() in map(str.casefold, BANNED_GROUPS):
+        logger.info(
+            f"[Banned: local] group for {title}"
         )
         return
 
     try:
-        torrents = search_movie(session, tmdb_id, aither_resolution)
+        video_type = movie.get("movieFile").get("quality").get("quality").get("modifier")
+        aither_type = TYPE_MAP.get(video_type.upper())
+        movie_resolution = get_movie_resolution(movie)
+        aither_resolution = RESOLUTION_MAP.get(str(movie_resolution))
+        torrents = search_movie(session, movie, aither_resolution, aither_type)
     except Exception as e:
         if "429" in str(e):
             logger.warning(f"Rate limit exceeded while checking {title}. Will retry.")
@@ -200,21 +238,28 @@ def process_movie(session, movie, not_found_file):
                 movie_file = movie["movieFile"]["path"]
                 if movie_file:
                     logger.info(
-                        f"Not found in local copy resolution of {movie_resolution} on AITHER"
+                        f"[{movie_resolution} {video_type}] not found on AITHER"
                     )
                     not_found_file.write(f"{movie_file}\n")
                 else:
                     logger.info(
-                        f"Not found in local copy resolution of {movie_resolution} on AITHER (No media file)"
+                        f"[{movie_resolution} {video_type}] not found on AITHER (No media file)"
                     )
             except KeyError:
                 logger.info(
-                    f"Not found in local copy resolution of {movie_resolution} on AITHER (No media file)"
+                    f"[{movie_resolution} {video_type}] not found on AITHER (No media file)"
                 )
         else:
-            logger.info(
-                f"Found in local copy resolution of {movie_resolution} on AITHER"
-            )
+            release_info = guessit(torrents[0].get("attributes").get("name"))
+            if "release_group" in release_info \
+                    and release_info["release_group"].casefold() in map(str.casefold, BANNED_GROUPS):
+                logger.info(
+                    f"[Trumpable: Banned] group for {title} [{movie_resolution} {video_type}] on AITHER"
+                )
+            else :
+                logger.info(
+                     f"[{movie_resolution} {video_type}] already exists on AITHER"
+                )
 
 
 # Function to process each show
