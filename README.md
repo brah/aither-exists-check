@@ -1,73 +1,87 @@
 # Aither Exists Check
 
-A lightweight script to check your Radarr and Sonarr media libraries against Aither's uploaded movie torrents.
+A lightweight Python script to check your Radarr and Sonarr media libraries against Aither's uploaded movie torrents.
 
-## Setup / Run
+## Features
 
-### Prerequisites
+- Compare your Radarr and Sonarr libraries with Aither's torrent listings.
+- Log missing movies and TV shows from your libraries, respecting banned groups, trumpables, etc.
+- Respect Aither's API rate limits.
+
+## Prerequisites
 
 - Python 3.x installed on your system.
-- Radarr and (or) Sonarr installed and configured.
+- Radarr and/or Sonarr configured and running.
 
-### Installation
+## Installation
 
-1. Clone or download this repository.
-2. Navigate to the project directory.
-3. Install the required Python packages using `pip`:
+1. Clone this repository:
 
-   ```sh
-   pip install requests
+   ```bash
+   git clone https://github.com/brah/aither-exists-check.git
    ```
 
-### Configuration
+2. Navigate to the project directory:
+
+   ```bash
+   cd aither-exists-check
+   ```
+
+3. Install the required Python packages:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Configuration
 
 1. Create a file named `apiKey.py` in the project directory with the following contents - refer to apiKeySample.py:
 
    ```python
-   aither_key = ""
-   radarr_key = ""
-   sonarr_key = ""
-   radarr_url = ""
-   sonarr_url = ""
+    aither_key = ""
+    radarr_key = ""
+    sonarr_key = ""
+    radarr_url = ""
+    sonarr_url = ""
    ```
 
-2. The first time you run the script, you will be prompted to enter your API keys and URLs for Aither, Radarr, and Sonarr. The script will save these values to `apiKey.py` for future use.
+2. The first time you run the script, you'll be prompted to input your API keys and URLs. The script saves these to `apiKey.py` for future use.
 
-### Usage
+## Usage
 
-To run the script, use the following commands:
+To run the script, use one of the following commands:
 
 - To check the Radarr library:
 
-  ```sh
+  ```bash
   python main.py --radarr
   ```
 
 - To check the Sonarr library:
 
-  ```sh
+  ```bash
   python main.py --sonarr
   ```
 
-- To check both libraries (default if no arguments are provided):
+- To check both libraries (default):
 
-  ```sh
+  ```bash
   python main.py
   ```
 
-### Notes
-
-- Ensure the Radarr URL is the base URL (e.g., `http://media.server:7878`) and the script will append `/api/v3/movie`.
-- Ensure the Sonarr URL is the base URL (e.g., `http://media.server:8989`) and the script will append `/api/v3/series`.
-- The script respects Aither's rate limits with a delay of 2 seconds between requests.
-
 ## Output
 
-The script generates two files to record movies and shows not found in Aither:
+The script generates two output files:
 
-- `not_found_radarr.txt`: Records movies from Radarr not found in Aither.
-- `not_found_sonarr.txt`: Records shows from Sonarr not found in Aither.
+- `not_found_radarr.txt`: Lists movies in Radarr not found in Aither.
+- `not_found_sonarr.txt`: Lists shows in Sonarr not found in Aither.
 
 ## Logging
 
-The script logs detailed messages to `script.log` and provides concise output on the console.
+Detailed logs are stored in `script.log`, while concise output is displayed on the console.
+
+## Contributors
+
+Special thanks to those who have contributed:
+
+- [@DefectiveDev](https://github.com/defectivedev)
