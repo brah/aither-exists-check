@@ -151,9 +151,9 @@ def search_movie(session, movie, movie_resolution, movie_type):
 
     # build the search url
     if movie_resolution is not None:
-        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP["movie"]}&tmdbId={tmdb_id}&resolutions[0]={movie_resolution}&api_token={apiKey.aither_key}"
+        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP['movie']}&tmdbId={tmdb_id}&resolutions[0]={movie_resolution}&api_token={apiKey.aither_key}"
     else:
-        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP["movie"]}&tmdbId={tmdb_id}&api_token={apiKey.aither_key}"
+        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP['movie']}&tmdbId={tmdb_id}&api_token={apiKey.aither_key}"
 
     if movie_type:
         url += f"&types[0]={movie_type}"
