@@ -200,6 +200,27 @@ def get_movie_resolution(movie):
         movie_resolution = None
     return movie_resolution
 
+def get_video_type(source, modifier):
+    source = (source or '').lower()
+    modifier = (modifier or '').lower()
+
+    if source == 'bluray':
+        if modifier == 'remux':
+            return 'REMUX'
+        elif modifier == 'full':
+            return 'FULL DISC'
+        else:
+            return 'ENCODE'
+    elif source in ['webdl', 'web-dl']:
+        return 'WEB-DL'
+    elif source in ['webrip', 'web-rip']:
+        return 'WEBRIP'
+    elif source == 'hdtv':
+        return 'HDTV'
+    else:
+        return 'OTHER'
+
+
 # Function to process each movie
 def process_movie(session, movie, not_found_file):
     title = movie["title"]
@@ -216,12 +237,15 @@ def process_movie(session, movie, not_found_file):
     if "releaseGroup" in movie["movieFile"] and \
             movie["movieFile"]["releaseGroup"].casefold() in map(str.casefold, BANNED_GROUPS):
         logger.info(
-            f"[Banned: local] group for {title}"
+            f"[Banned: local] group ({movie['movieFile']['releaseGroup']}) for {title}"
         )
         return
 
     try:
-        video_type = movie.get("movieFile").get("quality").get("quality").get("modifier")
+        quality_info = movie.get("movieFile").get("quality").get("quality")
+        source = quality_info.get("source")
+        modifier = quality_info.get("modifier")
+        video_type = get_video_type(source, modifier)
         aither_type = TYPE_MAP.get(video_type.upper())
         movie_resolution = get_movie_resolution(movie)
         aither_resolution = RESOLUTION_MAP.get(str(movie_resolution))

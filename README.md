@@ -1,6 +1,7 @@
 # Aither Exists Check
 
 A lightweight Python script to check your Radarr and Sonarr media libraries against Aither's uploaded movie torrents.
+As this script becomes more granular, and checking against Aither's resolutions, editions etc. it is more and more recommended you *double check* before proceeding to upload!
 
 ## Features
 
