@@ -1,3 +1,4 @@
+import os.path
 import apiKey
 import requests
 import time
@@ -26,7 +27,6 @@ RADARR_API_SUFFIX = "/api/v3/movie"
 SONARR_API_SUFFIX = "/api/v3/series"
 NOT_FOUND_FILE_RADARR = "not_found_radarr.txt"
 NOT_FOUND_FILE_SONARR = "not_found_sonarr.txt"
-SLEEP_TIME = 10
 
 # LOGIC CONSTANT - DO NOT TWEAK !!!
 # changing this may break resolution mapping for dvd in search_movie
@@ -73,10 +73,10 @@ console_handler.setFormatter(console_formatter)
 logger.addHandler(console_handler)
 
 # File handler with detailed format
-file_handler = logging.FileHandler("script.log")
-file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-file_handler.setFormatter(file_formatter)
-logger.addHandler(file_handler)
+# file_handler = logging.FileHandler("script.log")
+# file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+# file_handler.setFormatter(file_formatter)
+# logger.addHandler(file_handler)
 
 
 # Setup function to prompt user for missing API keys and URLs if critical for the selected mode(s)
@@ -160,8 +160,7 @@ def search_movie(session, movie, movie_resolution, movie_type):
     while True:
         response = session.get(url)
         if response.status_code == 429:
-            logger.warning(f"Rate limit exceeded. Sleeping for {SLEEP_TIME} seconds.")
-            time.sleep(SLEEP_TIME)  # Respectful delay
+            logger.warning(f"Rate limit exceeded.")
         else:
             response.raise_for_status()  # Raise an exception if the request failed
             torrents = response.json()["data"]
@@ -175,8 +174,7 @@ def search_show(session, tvdb_id):
     while True:
         response = session.get(url)
         if response.status_code == 429:
-            logger.warning(f"Rate limit exceeded. Sleeping for {SLEEP_TIME} seconds.")
-            time.sleep(SLEEP_TIME)  # Respectful delay
+            logger.warning(f"Rate limit exceeded.")
         else:
             response.raise_for_status()  # Raise an exception if the request failed
             torrents = response.json()["data"]
@@ -247,7 +245,7 @@ def process_movie(session, movie, not_found_file):
         torrents = search_movie(session, movie, aither_resolution, aither_type)
     except Exception as e:
         if "429" in str(e):
-            logger.warning(f"Rate limit exceeded while checking {title}. Will retry.")
+            logger.warning(f"Rate limit exceeded while checking {title}.")
         else:
             logger.error(f"Error: {str(e)}")
             not_found_file.write(f"{title} - Error: {str(e)}\n")
@@ -290,7 +288,7 @@ def process_show(session, show, not_found_file):
         torrents = search_show(session, tvdb_id)
     except Exception as e:
         if "429" in str(e):
-            logger.warning(f"Rate limit exceeded while checking {title}. Will retry.")
+            logger.warning(f"Rate limit exceeded while checking {title}.")
         else:
             logger.error(f"Error: {str(e)}")
             not_found_file.write(f"{title} - Error: {str(e)}\n")
@@ -309,8 +307,18 @@ def main():
     )
     parser.add_argument("--radarr", action="store_true", help="Check Radarr library")
     parser.add_argument("--sonarr", action="store_true", help="Check Sonarr library")
+    parser.add_argument("-o", "--output-path", required=False, help="Output file path")
+    parser.add_argument("-s", "--sleep-timer", type=int, default=10, help="Sleep time between calls")
 
     args = parser.parse_args()
+
+    script_log = "script.log"
+    if args.output_path is not None:
+        script_log = os.path.join(os.path.expanduser(args.output_path), script_log)
+    file_handler = logging.FileHandler(f"{script_log}")
+    file_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
 
     radarr_needed = args.radarr or (not args.sonarr and not args.radarr)
     sonarr_needed = args.sonarr or (not args.sonarr and not args.radarr)
@@ -326,12 +334,15 @@ def main():
             if args.radarr or (not args.sonarr and not args.radarr):
                 if apiKey.radarr_key and apiKey.radarr_url:
                     movies = get_all_movies(session)
+                    out_radarr = NOT_FOUND_FILE_RADARR
+                    if args.output_path is not None:
+                        out_radarr = os.path.join(os.path.expanduser(args.output_path), NOT_FOUND_FILE_RADARR)
                     with open(
-                        NOT_FOUND_FILE_RADARR, "w", encoding="utf-8", buffering=1
+                        out_radarr, "w", encoding="utf-8", buffering=1
                     ) as not_found_file:
                         for movie in movies:
                             process_movie(session, movie, not_found_file)
-                            time.sleep(SLEEP_TIME)  # Respectful delay
+                            time.sleep(args.sleep_timer)  # Respectful delay
                 else:
                     logger.warning(
                         "Skipping Radarr check: Radarr API key or URL is missing.\n"
@@ -340,12 +351,15 @@ def main():
             if args.sonarr or (not args.sonarr and not args.radarr):
                 if apiKey.sonarr_key and apiKey.sonarr_url:
                     shows = get_all_shows(session)
+                    out_sonarr = NOT_FOUND_FILE_SONARR
+                    if args.output_path is not None:
+                        out_sonarr = os.path.join(os.path.expanduser(args.output_path), NOT_FOUND_FILE_SONARR)
                     with open(
-                        NOT_FOUND_FILE_SONARR, "w", encoding="utf-8", buffering=1
+                        out_sonarr, "w", encoding="utf-8", buffering=1
                     ) as not_found_file:
                         for show in shows:
                             process_show(session, show, not_found_file)
-                            time.sleep(SLEEP_TIME)  # Respectful delay
+                            time.sleep(args.sleep_timer)  # Respectful delay
                 else:
                     logger.warning(
                         "Skipping Sonarr check: Sonarr API key or URL is missing.\n"
