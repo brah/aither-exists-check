@@ -26,8 +26,7 @@ RADARR_API_SUFFIX = "/api/v3/movie"
 SONARR_API_SUFFIX = "/api/v3/series"
 NOT_FOUND_FILE_RADARR = "not_found_radarr.txt"
 NOT_FOUND_FILE_SONARR = "not_found_sonarr.txt"
-INITIAL_SLEEP_TIME = 10
-MAX_SLEEP_TIME = 60
+SLEEP_TIME = 10
 
 # LOGIC CONSTANT - DO NOT TWEAK !!!
 # changing this may break resolution mapping for dvd in search_movie
@@ -161,30 +160,26 @@ def search_movie(session, movie, movie_resolution, movie_type):
     while True:
         response = session.get(url)
         if response.status_code == 429:
-            logger.warning(f"Rate limit exceeded. Sleeping for {sleep_time} seconds.")
-            time.sleep(sleep_time)
-            sleep_time = min(sleep_time * 2, MAX_SLEEP_TIME)
+            logger.warning(f"Rate limit exceeded. Sleeping for {SLEEP_TIME} seconds.")
+            time.sleep(SLEEP_TIME)  # Respectful delay
         else:
             response.raise_for_status()  # Raise an exception if the request failed
             torrents = response.json()["data"]
-            time.sleep(INITIAL_SLEEP_TIME)  # Respectful delay
             return torrents
 
 
 # Function to search for a show in Aither using its TVDB ID
-def search_show(session, tvdb_id, sleep_time=INITIAL_SLEEP_TIME):
+def search_show(session, tvdb_id):
     url = f"{AITHER_URL}/api/torrents/filter?tvdbId={tvdb_id}&api_token={apiKey.aither_key}"
     
     while True:
         response = session.get(url)
         if response.status_code == 429:
-            logger.warning(f"Rate limit exceeded. Sleeping for {sleep_time} seconds.")
-            time.sleep(sleep_time)
-            sleep_time = min(sleep_time * 2, MAX_SLEEP_TIME)
+            logger.warning(f"Rate limit exceeded. Sleeping for {SLEEP_TIME} seconds.")
+            time.sleep(SLEEP_TIME)  # Respectful delay
         else:
             response.raise_for_status()  # Raise an exception if the request failed
             torrents = response.json()["data"]
-            time.sleep(INITIAL_SLEEP_TIME)  # Respectful delay
             return torrents
 
 def get_movie_resolution(movie):
@@ -336,6 +331,7 @@ def main():
                     ) as not_found_file:
                         for movie in movies:
                             process_movie(session, movie, not_found_file)
+                            time.sleep(SLEEP_TIME)  # Respectful delay
                 else:
                     logger.warning(
                         "Skipping Radarr check: Radarr API key or URL is missing.\n"
@@ -349,6 +345,7 @@ def main():
                     ) as not_found_file:
                         for show in shows:
                             process_show(session, show, not_found_file)
+                            time.sleep(SLEEP_TIME)  # Respectful delay
                 else:
                     logger.warning(
                         "Skipping Sonarr check: Sonarr API key or URL is missing.\n"
