@@ -48,12 +48,12 @@ As this script becomes more granular, and checking against Aither's resolutions,
    docker build -t aither-exists-check:latest .
    ```
 4. Run the docker image. Correct the paths below to map correct config file location and output directory.
-```bash
-docker run --user 1000:1000 --name aither-exists --rm -it \
--v ./config/apiKey.py:/aither-exists-check/apiKey.py \
--v ./output:/output/ \
-aither-exists-check:latest --radarr
-```
+    ```bash
+    docker run --user 1000:1000 --name aither-exists --rm -it \
+    -v ./config/apiKey.py:/aither-exists-check/apiKey.py \
+    -v ./output:/output/ \
+    aither-exists-check:latest --radarr
+    ```
 
 ## Configuration
 
