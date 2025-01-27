@@ -34,6 +34,27 @@ As this script becomes more granular, and checking against Aither's resolutions,
    pip install -r requirements.txt
    ```
 
+## Docker
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/brah/aither-exists-check.git
+   ```
+2. Navigate to the project directory:
+   ```bash
+   cd aither-exists-check
+   ```
+3. Build the docker image:
+    ```bash
+   docker build -t aither-exists-check:latest .
+   ```
+4. Run the docker image. Correct the paths below to map correct config file location and output directory.
+    ```bash
+    docker run --user 1000:1000 --name aither-exists --rm -it \
+    -v ./config/apiKey.py:/aither-exists-check/apiKey.py \
+    -v ./output:/output/ \
+    aither-exists-check:latest --radarr
+    ```
+
 ## Configuration
 
 1. Create a file named `apiKey.py` in the project directory with the following contents - refer to apiKeySample.py:
