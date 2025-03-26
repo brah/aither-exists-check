@@ -58,10 +58,6 @@ TYPE_MAP = {
     "MOVIE PACK": 10,
 }
 
-BANNED_GROUPS = ['4K4U', 'AROMA', 'd3g', 'edge2020', 'EMBER', 'EVO', 'FGT', 'FreetheFish', 'Hi10', 'HiQVE', 'ION10', 'iVy', 'Judas', 'LAMA', 'MeGusta', 'nikt0', 'OEPlus', 'OFT', 'OsC', 'PYC',
-                              'QxR', 'Ralphy', 'RARBG', 'RetroPeeps', 'SAMPA', 'Sicario', 'Silence', 'SkipTT', 'SPDVD', 'STUTTERSHIT', 'SWTYBLZ', 'TAoE', 'TGx', 'Tigole', 'TSP', 'TSPxL', 'VXT', 'Weasley[HONE]',
-                              'Will1869', 'x0r', 'YIFY']
-
 # Setup logging
 logger = logging.getLogger("customLogger")
 logger.setLevel(logging.INFO)
@@ -168,9 +164,20 @@ def search_movie(session, movie, movie_resolution, movie_type):
 
 
 # Function to search for a show in Aither using its TVDB ID
-def search_show(session, tvdb_id):
-    url = f"{AITHER_URL}/api/torrents/filter?tvdbId={tvdb_id}&api_token={apiKey.aither_key}"
-    
+def search_show(session, show):
+    tvdb_id = show["tvdbId"]
+    show_resolution = None
+    # build the search url
+    if show_resolution is not None:
+        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP['tv']}&tvdbId={tvdb_id}&api_token={apiKey.aither_key}"
+        # url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP['tv']}&tmdbId={tmdb_id}&resolutions[0]={movie_resolution}&api_token={apiKey.aither_key}"
+    else:
+        url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP['tv']}&tvdbId={tvdb_id}&api_token={apiKey.aither_key}"
+        # url = f"{AITHER_URL}/api/torrents/filter?categories[0]={CATEGORY_MAP['tv']}&tmdbId={tmdb_id}&api_token={apiKey.aither_key}"
+
+    # if show_type:
+    #     url += f"&types[0]={show_type}"
+
     while True:
         response = session.get(url)
         if response.status_code == 429:
@@ -204,6 +211,13 @@ def get_video_type(source, modifier):
             return 'FULL DISC'
         else:
             return 'ENCODE'
+    elif source == 'dvd':
+        if modifier == 'remux':
+            return 'REMUX'
+        elif modifier == 'full':
+            return 'FULL DISC'
+        else:
+            return 'ENCODE'
     elif source in ['webdl', 'web-dl']:
         return 'WEB-DL'
     elif source in ['webrip', 'web-rip']:
@@ -215,7 +229,7 @@ def get_video_type(source, modifier):
 
 
 # Function to process each movie
-def process_movie(session, movie, not_found_file):
+def process_movie(session, movie, not_found_file, banned_groups):
     title = movie["title"]
     logger.info(f"Checking {title}... ")
 
@@ -227,8 +241,9 @@ def process_movie(session, movie, not_found_file):
         return
 
     # skip check if group is banned.
+    banned_names = [d['name'] for d in banned_groups]
     if "releaseGroup" in movie["movieFile"] and \
-            movie["movieFile"]["releaseGroup"].casefold() in map(str.casefold, BANNED_GROUPS):
+            movie["movieFile"]["releaseGroup"].casefold() in map(str.casefold, banned_names):
         logger.info(
             f"[Banned: local] group ({movie['movieFile']['releaseGroup']}) for {title}"
         )
@@ -238,6 +253,9 @@ def process_movie(session, movie, not_found_file):
         quality_info = movie.get("movieFile").get("quality").get("quality")
         source = quality_info.get("source")
         modifier = quality_info.get("modifier")
+        if modifier == "none" and source == "dvd":
+            release_info = guessit(movie.get("movieFile").get("relativePath"))
+            modifier = release_info.get("other")
         video_type = get_video_type(source, modifier)
         aither_type = TYPE_MAP.get(video_type.upper())
         movie_resolution = get_movie_resolution(movie)
@@ -269,9 +287,9 @@ def process_movie(session, movie, not_found_file):
         else:
             release_info = guessit(torrents[0].get("attributes").get("name"))
             if "release_group" in release_info \
-                    and release_info["release_group"].casefold() in map(str.casefold, BANNED_GROUPS):
+                    and release_info["release_group"].casefold() in map(str.casefold, banned_names):
                 logger.info(
-                    f"[Trumpable: Banned] group for {title} [{movie_resolution} {video_type}] on AITHER"
+                    f"[Trumpable: Banned] group for {title} [{movie_resolution} {video_type} {release_info["release_group"]}] on AITHER"
                 )
             else :
                 logger.info(
@@ -280,12 +298,12 @@ def process_movie(session, movie, not_found_file):
 
 
 # Function to process each show
-def process_show(session, show, not_found_file):
+def process_show(session, show, not_found_file, banned_groups):
     title = show["title"]
     tvdb_id = show["tvdbId"]
     logger.info(f"Checking {title}... ")
     try:
-        torrents = search_show(session, tvdb_id)
+        torrents = search_show(session, show)
     except Exception as e:
         if "429" in str(e):
             logger.warning(f"Rate limit exceeded while checking {title}.")
@@ -299,6 +317,19 @@ def process_show(session, show, not_found_file):
         else:
             logger.info("Found in AITHER")
 
+# pull banned groups from aither api
+def get_banned_groups(session):
+    logger.info("Fetching banned groups")
+
+    url = f"{AITHER_URL}/api/blacklists/releasegroups?api_token={apiKey.aither_key}"
+    while True:
+        response = session.get(url)
+        if response.status_code == 429:
+            logger.warning(f"Rate limit exceeded.")
+        else:
+            response.raise_for_status()  # Raise an exception if the request failed
+            groups = response.json()["data"]
+            return groups
 
 # Main function to handle both Radarr and Sonarr
 def main():
@@ -331,6 +362,7 @@ def main():
 
     try:
         with requests.Session() as session:
+            banned_groups = get_banned_groups(session)
             if args.radarr or (not args.sonarr and not args.radarr):
                 if apiKey.radarr_key and apiKey.radarr_url:
                     movies = get_all_movies(session)
@@ -341,7 +373,7 @@ def main():
                         out_radarr, "w", encoding="utf-8", buffering=1
                     ) as not_found_file:
                         for movie in movies:
-                            process_movie(session, movie, not_found_file)
+                            process_movie(session, movie, not_found_file, banned_groups)
                             time.sleep(args.sleep_timer)  # Respectful delay
                 else:
                     logger.warning(
@@ -358,7 +390,7 @@ def main():
                         out_sonarr, "w", encoding="utf-8", buffering=1
                     ) as not_found_file:
                         for show in shows:
-                            process_show(session, show, not_found_file)
+                            process_show(session, show, not_found_file, banned_groups)
                             time.sleep(args.sleep_timer)  # Respectful delay
                 else:
                     logger.warning(
