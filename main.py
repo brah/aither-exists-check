@@ -289,7 +289,7 @@ def process_movie(session, movie, not_found_file, banned_groups):
             if "release_group" in release_info \
                     and release_info["release_group"].casefold() in map(str.casefold, banned_names):
                 logger.info(
-                    f"[Trumpable: Banned] group for {title} [{movie_resolution} {video_type} {release_info["release_group"]}] on AITHER"
+                    f"[Trumpable: Banned] group for {title} [{movie_resolution} {video_type} {release_info['release_group']}] on AITHER"
                 )
             else :
                 logger.info(
